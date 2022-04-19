@@ -1,6 +1,8 @@
 package com.yx.demo.source.newspring;
 
 import cn.hutool.core.lang.ClassScanner;
+import org.springframework.beans.factory.ObjectFactory;
+import org.springframework.beans.factory.config.BeanDefinition;
 
 import java.lang.reflect.Field;
 import java.util.*;
@@ -14,7 +16,21 @@ public class YxApplicationContext {
     private Class configClass;
     private Set<Class<?>> classes;
     private static Map<String, YxBeanDefination> beanDefinationMap = new HashMap();
+    /**
+     * 一级缓存 存放单例bean
+     */
     private static Map<String,Object> singletonObjects = new HashMap();
+
+    /**
+     * 二级缓存 存放半成品bean,遇到接口会将接口实例化,从而导致报错
+     */
+    private final Map<String,Object> earlySingletonObjects = new HashMap();
+
+    /**
+     * 三级缓存,存放将接口转换成实例化的bean
+     */
+    private final Map<String,YxObjectFactory<?>> singletonFactories = new HashMap();
+
     private static final List<OneBeanPostProcessor> postProcessorList = new ArrayList<>();
 
     public YxApplicationContext(Class configClass) {
@@ -63,21 +79,42 @@ public class YxApplicationContext {
         //System.out.println(clazz);
         //return null;
 
-        if(beanDefination.getScope().equals("singleton")) {
+        if("singleton".equals(beanDefination.getScope())) {
             Object object = singletonObjects.get(beanName);
             if (object == null) {
-                object = beanDefination.getClazz().newInstance();
-                singletonObjects.put(beanName, object);
+                // 从二级缓存里面拿去半成品bean
+                object = earlySingletonObjects.get(beanName);
+                if(object == null){
+                    // 如果是接口,先实例化三级缓存
+                    if(beanDefination.getClazz().isInterface()){
+                        addSingletonFactory(beanName, new YxMapperFactory(beanDefination.getClazz()));
+                        YxObjectFactory<?> singletonFactory = singletonFactories.get(beanName);
+                        object = singletonFactory.getObject();
+                        this.earlySingletonObjects.put(beanName,object);
+                        this.singletonFactories.remove(beanName);
+                    }else {
+                        this.earlySingletonObjects.put(beanName,beanDefination.getClazz().newInstance());
+                    }
+                    // 实例化
+                    object = createBean(beanDefination.getClazz(),beanName,object);
+                    singletonObjects.put(beanName, object);
+                }
             }
-            return createBean(beanDefination.getClazz(),beanName);
+            return object;
             //return object;
         } else {
-            return createBean(beanDefination.getClazz(),beanName);
+            return createBean(beanDefination.getClazz(),beanName,null);
         }
     }
 
-    private Object createBean(Class clazz,String beanname) throws Exception {
-        Object object = clazz.newInstance();
+    private Object createBean(Class clazz,String beanname,Object tempObject) throws Exception {
+
+        if (tempObject == null) {
+            // 实例化
+            tempObject = clazz.newInstance();
+        }
+
+        Object object = tempObject;
         Field[] fields = clazz.getDeclaredFields();
         Arrays.stream(fields)
                 .filter(f -> f.isAnnotationPresent(YxAutowired.class))
@@ -110,6 +147,15 @@ public class YxApplicationContext {
 
         YxComponent component = (YxComponent) c.getAnnotation(YxComponent.class);
         beanDefinationMap.put(component.value(), beanDefinition);
+    }
+
+    protected void addSingletonFactory(String beanName, YxObjectFactory<?> singletonFactory){
+        synchronized (this.earlySingletonObjects){
+            if (!this.earlySingletonObjects.containsKey(beanName)) {
+                this.singletonFactories.put(beanName,singletonFactory);
+                this.earlySingletonObjects.remove(beanName);
+            }
+        }
     }
 
 }

@@ -7,6 +7,10 @@ package com.yx.demo.source.newspring;
  */
 @YxComponent(value = "testService")
 public class TestService {
+
+    @YxAutowired
+    private UserService userService;
+
     public String test() {
         return "我是TestService";
     }

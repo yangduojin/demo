@@ -1,6 +1,7 @@
 package com.yx.demo;
 
 
+import com.yx.demo.source.newspring.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,6 +28,7 @@ class DemoApplicationTests {
 
     @Autowired
     private RedisTemplate redisTemplate;
+
 
     @Test
     void contextLoads() {
